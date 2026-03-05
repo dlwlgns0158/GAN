@@ -1,0 +1,73 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# 1. 생성자 (Generator)
+class Generator(nn.Module):
+    def __init__(self, z_dim, img_dim):
+        super().__init__()
+        self.gen = nn.Sequential(
+            nn.Linear(z_dim, 256),
+            nn.LeakyReLU(0.2),
+            nn.Linear(256, img_dim),
+            nn.Tanh(), # 데이터를 [-1, 1] 범위로 출력
+        )
+
+    def forward(self, x):
+        return self.gen(x)
+
+# 2. 판별자 (Discriminator)
+class Discriminator(nn.Module):
+    def __init__(self, img_dim):
+        super().__init__()
+        self.disc = nn.Sequential(
+            nn.Linear(img_dim, 256),
+            nn.LeakyReLU(0.2),
+            nn.Linear(256, 1),
+            nn.Sigmoid(), # 0(가짜) ~ 1(진짜) 사이의 확률 출력
+        )
+
+    def forward(self, x):
+        return self.disc(x)
+
+# 3. 설정 (Hyperparameters)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+lr = 3e-4
+z_dim = 64      # 노이즈 벡터 크기
+img_dim = 28 * 28 * 1  # MNIST 이미지 크기 (784)
+batch_size = 32
+
+gen = Generator(z_dim, img_dim).to(device)
+disc = Discriminator(img_dim).to(device)
+opt_gen = optim.Adam(gen.parameters(), lr=lr)
+opt_disc = optim.Adam(disc.parameters(), lr=lr)
+criterion = nn.BCELoss() # Binary Cross Entropy Loss
+
+# 4. 학습 루프 (Training Loop)
+# (데이터 로더 과정은 생략, 루프 구조 위주로 보세요)
+for epoch in range(50):
+    for batch_idx, (real, _) in enumerate(dataloader):
+        real = real.view(-1, 784).to(device)
+        batch_size = real.shape[0]
+
+        ### (1) 판별자 학습: maximize log(D(x)) + log(1 - D(G(z)))
+        noise = torch.randn(batch_size, z_dim).to(device)
+        fake = gen(noise)
+        
+        disc_real = disc(real)
+        lossD_real = criterion(disc_real, torch.ones_like(disc_real)) # 진짜를 1로
+        disc_fake = disc(fake.detach())
+        lossD_fake = criterion(disc_fake, torch.zeros_like(disc_fake)) # 가짜를 0으로
+        
+        lossD = (lossD_real + lossD_fake) / 2
+        disc.zero_grad()
+        lossD.backward()
+        opt_disc.step()
+
+        ### (2) 생성자 학습: maximize log(D(G(z)))
+        output = disc(fake)
+        lossG = criterion(output, torch.ones_like(output)) # 판별자를 속여서 1이 나오게 함
+        
+        gen.zero_grad()
+        lossG.backward()
+        opt_gen.step()
